@@ -22,10 +22,10 @@ run
 tmp
 EOF
 ))
-instan_root_dir="/var/cache/instan-root"  #### need real file system, not overlayfs
+instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
 support_dir(){
     moment=$(date +%Y-%m-%d--%H-%M-%S)
-    operation_dir="$instan_root_dir/$moment"
+    operation_dir="$instant_root_dir/$moment"
     chroot_dir="$operation_dir/chroot"
     mkdir -p $chroot_dir
     overlay_create_and_mount
