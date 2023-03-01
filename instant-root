@@ -1,0 +1,94 @@
+#!/bin/bash
+list_dir=($(cat <<EOF
+bin
+boot
+etc
+lib
+lib64
+opt
+root
+sbin
+srv
+usr
+var
+mnt
+EOF
+))
+chroot_system_dirs=($(cat <<EOF
+proc
+sys
+dev
+run
+tmp
+EOF
+))
+instan_root_dir="/var/cache/instan-root"  #### need real file system, not overlayfs
+support_dir(){
+    moment=$(date +%Y-%m-%d--%H-%M-%S)
+    operation_dir="$instan_root_dir/$moment"
+    chroot_dir="$operation_dir/chroot"
+    mkdir -p $chroot_dir
+    overlay_create_and_mount
+}
+overlay_create_and_mount(){
+        for i in ${list_dir[@]} ; do
+            mkdir -p $operation_dir/overlay/work-$i
+            mkdir -p $operation_dir/overlay/upper-$i
+            mkdir -p $chroot_dir/$i
+            mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
+        done
+chroot_setup
+}
+chroot_setup(){
+    for i in ${chroot_system_dirs[@]} ; do
+        if [ $i  == "proc" ] ; then
+            mkdir  $chroot_dir/$i
+            mount --types $i /$i $chroot_dir/$i
+        elif [ $i == "sys" ] ; then
+            mkdir  $chroot_dir/$i
+            mount --types "$i"fs /$i $chroot_dir/$i
+        else
+            mkdir $chroot_dir/$i
+            mount --rbind /$i $chroot_dir/$i
+            mount --make-rslave $chroot_dir/$i
+        fi
+    done
+chroot_switch
+}
+chroot_switch(){
+    chroot $chroot_dir
+    umount -R $chroot_dir/*
+}
+validate_dir(){
+    if [ -d $directory/overlay ] && [ -d $directory/chroot ] ; then
+        operation_dir=$directory
+        chroot_dir="$directory/chroot"
+        overlay_create_and_mount
+    else
+        printf "$directory nunca usado antes, saindo%s\n"
+        exit 1
+    fi
+}
+###########################################################
+if [ $(whoami) != "root" ] ; then
+    printf "execute como root%s\n"
+    exit 1
+fi
+###########################################################
+if [ -z $1 ] ; then support_dir ; fi
+###########################################################
+if [ "$1" == '-d' ] ; then
+
+    if [  -z $2 ] ; then
+        directory=$(pwd)
+        validate_dir
+    else
+        directory=$2
+        validate_dir
+    fi
+
+elif [ "$1" == '.' ] ; then
+    directory=$(pwd)
+    validate_dir
+fi
+###########################################################
