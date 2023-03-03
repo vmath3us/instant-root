@@ -58,9 +58,30 @@ printf "                exportando variáveis de usuário...       \n"
     fi
 }
 chroot_switch(){
-    chroot $chroot_dir
-    umount -R $chroot_dir/*
+    if [ $systemd == "0" ] ; then
+    chroot_setup
+       else
+    systemd_setup
+    fi
 }
+chroot_setup(){
+printf "        chroot em   $chroot_dir                 \n"
+printf "###########################################################\n"
+    sudo chroot $chroot_dir su -c "cd /home/$user_chroot; /usr/bin/env ${env_on_chroot} $user_shell" $user_chroot
+printf "###########################################################\n"
+printf "        desmontando chroot              \n"
+    sudo umount -R $chroot_dir/* 2> /dev/null
+}
+systemd_setup(){
+    sudo mkdir -p $chroot_dir/etc/systemd/system/console-getty.service.d/
+    sudo printf "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 \$TERM\n" $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf
+    sudo systemd-nspawn -D $chroot_dir -b
+    sudo umount -R $chroot_dir/* 2> /dev/null
+}
+#######################################################################################
+#
+#
+#######################################################################################
 validate_dir(){
     if [ -d $directory/overlay ] && [ -d $directory/chroot ] ; then
         operation_dir=$directory
