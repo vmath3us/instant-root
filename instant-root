@@ -22,21 +22,22 @@ printf "                criando overlays...                               \n"
         done
 chroot_mounts
 }
-chroot_setup(){
-    for i in ${chroot_system_dirs[@]} ; do
-        if [ $i  == "proc" ] ; then
-            mkdir  $chroot_dir/$i
-            mount --types $i /$i $chroot_dir/$i
-        elif [ $i == "sys" ] || [ $i == "tmp" ] ; then
-            mkdir  $chroot_dir/$i
-            mount --types "$i"fs /$i $chroot_dir/$i
-        else
-            mkdir $chroot_dir/$i
-            mount --rbind /$i $chroot_dir/$i
-            mount --make-rslave $chroot_dir/$i
-        fi
-    done
-home_setup
+chroot_mounts(){
+printf "                montando pastas de processos...       \n"
+    if [ $systemd == "0" ] ; then
+        for i in ${chroot_system_dirs[@]} ; do
+               sudo mkdir $chroot_dir/$i
+            if [ $i != "tmp" ] ;then
+                sudo mount --rbind /$i $chroot_dir/$i
+               sudo mount --make-rslave $chroot_dir/$i
+            else
+                sudo mount --types "$i"fs /$i $chroot_dir/$i
+            fi
+        done
+        home_setup
+    else
+        home_setup
+    fi
 }
 home_setup(){
     mkdir -p $chroot_dir/home
