@@ -40,10 +40,22 @@ printf "                montando pastas de processos...       \n"
     fi
 }
 home_setup(){
-    mkdir -p $chroot_dir/home
-    mount --rbind /home $chroot_dir/home
-    mount --make-rslave $chroot_dir/home
-    chroot_switch
+printf "                montando home...       \n"
+ sudo mkdir -p $chroot_dir/home
+ sudo mount --rbind /home $chroot_dir/home
+ sudo mount --make-rslave $chroot_dir/home
+    generate_vars
+}
+generate_vars(){
+printf "                exportando variáveis de usuário...       \n"
+    if [ $systemd == "0" ] ; then
+         while read -r env_list; do
+             env_on_chroot="${env_on_chroot} \"${env_list}\""
+         done < <(printenv)
+        chroot_switch
+    else
+        chroot_switch
+    fi
 }
 chroot_switch(){
     chroot $chroot_dir
