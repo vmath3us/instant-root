@@ -13,6 +13,7 @@ support_dir(){
     overlay_create_and_mount
 }
 overlay_create_and_mount(){
+printf "                criando overlays...                               \n"
         for i in ${list_dir[@]} ; do
             mkdir -p $operation_dir/overlay/work-$i
             mkdir -p $operation_dir/overlay/upper-$i
@@ -57,9 +58,14 @@ validate_dir(){
         exit 1
     fi
 }
-###########################################################
-if [ $(whoami) != "root" ] ; then
-    printf "execute como root%s\n"
+printf "###########################################################\n"
+printf "                Instant Root                               \n"
+printf "###########################################################\n"
+
+
+
+if [ $user_chroot == "root" ] ; then
+    printf "execute com seu usuário%s\n"
     exit 1
 fi
 ###########################################################
