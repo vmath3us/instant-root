@@ -1,6 +1,6 @@
 #!/bin/bash
 list_dir=("bin" "boot" "etc" "lib" "lib64" "opt" "root" "sbin" "srv" "usr" "var" "mnt")
-chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
+chroot_system_dirs=("proc" "sys" "tmp" "dev" "run")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
 support_dir(){
     moment=$(date +%Y-%m-%d--%H-%M-%S)
@@ -23,7 +23,7 @@ chroot_setup(){
         if [ $i  == "proc" ] ; then
             mkdir  $chroot_dir/$i
             mount --types $i /$i $chroot_dir/$i
-        elif [ $i == "sys" ] ; then
+        elif [ $i == "sys" ] || [ $i == "tmp" ] ; then
             mkdir  $chroot_dir/$i
             mount --types "$i"fs /$i $chroot_dir/$i
         else
