@@ -32,7 +32,13 @@ chroot_setup(){
             mount --make-rslave $chroot_dir/$i
         fi
     done
-chroot_switch
+home_setup
+}
+home_setup(){
+    mkdir -p $chroot_dir/home
+    mount --rbind /home $chroot_dir/home
+    mount --make-rslave $chroot_dir/home
+    chroot_switch
 }
 chroot_switch(){
     chroot $chroot_dir
