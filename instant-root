@@ -71,3 +71,8 @@ elif [ "$1" == '.' ] ; then
     validate_dir
 fi
 ###########################################################
+#                    test envs to support graphics and sound
+#while read -r envs ; do
+#        printf "${envs}\"\n" >> /tmp/env-chroot-$moment
+#    done < <(printenv)
+#    sed -i -e "s/=/=\"/g" -e "/LS_CO/d" -e "/DBUS/d" /tmp/env-chroot-$moment
