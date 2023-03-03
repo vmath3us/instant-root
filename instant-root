@@ -15,12 +15,12 @@ support_dir(){
 overlay_create_and_mount(){
 printf "                criando overlays...                               \n"
         for i in ${list_dir[@]} ; do
-            mkdir -p $operation_dir/overlay/work-$i
-            mkdir -p $operation_dir/overlay/upper-$i
-            mkdir -p $chroot_dir/$i
-            mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
+         sudo mkdir -p $operation_dir/overlay/work-$i
+         sudo mkdir -p $operation_dir/overlay/upper-$i
+         sudo mkdir -p $chroot_dir/$i
+         sudo mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
         done
-chroot_setup
+chroot_mounts
 }
 chroot_setup(){
     for i in ${chroot_system_dirs[@]} ; do
