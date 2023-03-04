@@ -1,6 +1,6 @@
 #!/bin/bash
 list_dir=("bin" "boot" "etc" "lib" "lib64" "opt" "root" "sbin" "srv" "usr" "var" "mnt")
-chroot_system_dirs=("proc" "sys" "tmp" "dev" "run")
+chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
 user_shell=$SHELL
 user_chroot=$(whoami)
@@ -49,9 +49,11 @@ printf "                montando home...       \n"
 generate_vars(){
 printf "                exportando variáveis de usuário...       \n"
     if [ $systemd == "0" ] ; then
-         while read -r env_list; do
-             env_on_chroot="${env_on_chroot} \"${env_list}\""
-         done < <(printenv)
+        while read -r env_list; do
+            sudo printf "export \"${env_list}\"\n" >> $chroot_dir/tmp/entrypoint
+        done < <(printenv)
+         sudo printf 'cd $PWD' >> $chroot_dir/tmp/entrypoint
+         sudo printf "\nexec $user_shell%s\n" >> $chroot_dir/tmp/entrypoint
         chroot_switch
     else
         chroot_switch
@@ -65,11 +67,14 @@ chroot_switch(){
     fi
 }
 chroot_setup(){
-printf "        chroot em   $chroot_dir                 \n"
+printf "        chroot em $chroot_dir                 \n"
 printf "###########################################################\n"
-    sudo chroot $chroot_dir su -c "cd /home/$user_chroot; /usr/bin/env ${env_on_chroot} $user_shell" $user_chroot
+printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
 printf "###########################################################\n"
+    sudo chroot $chroot_dir su -c "printf "%s:" "user" | sudo chpasswd -e ; printf "%s:" "root" | sudo chpasswd -e; $user_shell /tmp/entrypoint" $user_chroot ##### zero password to root and user; thanks 89luca89
+    printf "###########################################################\n"
 printf "        desmontando chroot              \n"
+printf "###########################################################\n"
     sudo umount -R $chroot_dir/* 2> /dev/null
 }
 systemd_setup(){
