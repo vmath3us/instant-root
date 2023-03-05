@@ -4,7 +4,35 @@ chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
 user_shell=$SHELL
 user_chroot=$(whoami)
-systemd="0"
+mode="systemd" ################################## suported simple, systemd (using nspawn), and podman (rootless)
+select_mode(){
+    if [ $mode == "simple" ] || [ $mode == "systemd" ] ; then
+        support_dir
+    elif [ $mode == "podman" ] ; then
+        podman container exists instant-root
+            if [ $? -ne 0 ] ; then
+                 podman_generate_command
+            else
+                generate_vars
+            fi
+
+    else
+        printf "not defined mode, exiting"
+        exit 1
+    fi
+}
+podman_generate_command(){
+    podman_command="podman create --hostname instant-root-$HOST --ipc host --name instant-root --network host --privileged --security-opt label=disable --user root:root --pid host --label 'manager=instant-root' --volume /run/user/$(id -u):/run/user/$(id -u):rslave --entrypoint 'su -c $user_shell $HOME/.podman-entrypoint-instant-root $user_chroot'"
+    for i in ${list_dirs[@]} ; do
+        podman_command="${podman_command} --volume ${i}:${i}:ro"
+    done
+    for i in ${chroot_system_dirs[@]} ; do
+        if [ $i != "proc" ] || [ $i != "run" ] ; then
+        podman_command="${podman_command} --volume ${i}:${i}:rslave"
+        fi
+    done
+    podman_command="${podman_commmand} --volume $HOME:$HOME:rslave"
+}
 support_dir(){
     moment=$(date +%Y-%m-%d--%H-%M-%S)
     operation_dir="$instant_root_dir/$moment"
@@ -24,14 +52,15 @@ chroot_mounts
 }
 chroot_mounts(){
 printf "                montando pastas de processos...       \n"
-    if [ $systemd == "0" ] ; then
+    if [ $mode == "simple" ]; then
         for i in ${chroot_system_dirs[@]} ; do
-               sudo mkdir $chroot_dir/$i
+               sudo mkdir  -p $chroot_dir/$i
             if [ $i != "tmp" ] ;then
                 sudo mount --rbind /$i $chroot_dir/$i
                sudo mount --make-rslave $chroot_dir/$i
             else
                 sudo mount --types "$i"fs /$i $chroot_dir/$i
+               sudo mount --make-rslave $chroot_dir/$i
             fi
         done
         home_setup
@@ -48,30 +77,34 @@ printf "                montando home...       \n"
 }
 generate_vars(){
 printf "                exportando variáveis de usuário...       \n"
-    if [ $systemd == "0" ] ; then
+    if [ $mode == "simple" ] || [ $mode == "podman" ]; then
+    echo 'printf "%s:" "user" | sudo chpasswd -e ; printf "%s:" "root" | sudo chpasswd -e' >> /tmp/entrypoint-instant-root-$moment
         while read -r env_list; do
-            sudo printf "export \"${env_list}\"\n" >> $chroot_dir/tmp/entrypoint
+            printf "export \"${env_list}\"\n" >> /tmp/entrypoint-instant-root-$moment
         done < <(printenv)
-         sudo printf 'cd $PWD' >> $chroot_dir/tmp/entrypoint
-         sudo printf "\nexec $user_shell%s\n" >> $chroot_dir/tmp/entrypoint
         chroot_switch
-    else
+    elif [ $mode == "systemd" ] ; then
         chroot_switch
     fi
 }
 chroot_switch(){
-    if [ $systemd == "0" ] ; then
-    chroot_setup
-       else
-    systemd_setup
+    if [ $mode == "simple" ] ; then
+        chroot_setup
+    elif [ $mode == "systemd" ] ; then
+        systemd_setup
+    elif [ $mode == "podman" ] ; then
+        podman_setup
     fi
 }
 chroot_setup(){
+printf 'cd $PWD' >> /tmp/entrypoint-instant-root-$moment
+printf "\nexec $user_shell%s\n" >> /tmp/entrypoint-instant-root-$moment
 printf "        chroot em $chroot_dir                 \n"
 printf "###########################################################\n"
 printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
 printf "###########################################################\n"
-    sudo chroot $chroot_dir su -c "printf "%s:" "user" | sudo chpasswd -e ; printf "%s:" "root" | sudo chpasswd -e; $user_shell /tmp/entrypoint" $user_chroot ##### zero password to root and user; thanks 89luca89
+sudo mv /tmp/entrypoint-instant-root-$moment $chroot_dir/tmp/entrypoint-instant-root
+    sudo chroot $chroot_dir su -c "$user_shell /tmp/entrypoint-instant-root" $user_chroot ##### zero password to root and user; thanks 89luca89
     printf "###########################################################\n"
 printf "        desmontando chroot              \n"
 printf "###########################################################\n"
@@ -79,9 +112,12 @@ printf "###########################################################\n"
 }
 systemd_setup(){
     sudo mkdir -p $chroot_dir/etc/systemd/system/console-getty.service.d/
-    sudo printf "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 \$TERM\n" $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf
+    sudo printf "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 \$TERM\n" >> $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf
     sudo systemd-nspawn -D $chroot_dir -b
     sudo umount -R $chroot_dir/* 2> /dev/null
+}
+podman_setup(){
+    mv /tmp/entrypoint-instant-root-$moment $HOME/.podman-entrypoint-instant-root
 }
 #######################################################################################
 #
