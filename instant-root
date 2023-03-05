@@ -4,7 +4,8 @@ chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
 user_shell=$SHELL
 user_chroot=$(whoami)
-systemd="0"
+systemd="1"
+pre_provisioning="0"
 support_dir(){
     moment=$(date +%Y-%m-%d--%H-%M-%S)
     operation_dir="$instant_root_dir/$moment"
@@ -18,7 +19,9 @@ printf "                criando overlays...                               \n"
          sudo mkdir -p $operation_dir/overlay/work-$i
          sudo mkdir -p $operation_dir/overlay/upper-$i
          sudo mkdir -p $chroot_dir/$i
+         if ! mountpoint -q $chroot_dir/$i > /dev/null; then
          sudo mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
+         fi
         done
 chroot_mounts
 }
@@ -40,10 +43,10 @@ printf "                montando pastas de processos...       \n"
     fi
 }
 home_setup(){
-printf "                montando home...       \n"
- sudo mkdir -p $chroot_dir/home
- sudo mount --rbind /home $chroot_dir/home
- sudo mount --make-rslave $chroot_dir/home
+    printf "                montando home...       \n"
+    sudo mkdir -p $chroot_dir/home
+    sudo mount --rbind /home $chroot_dir/home
+    sudo mount --make-rslave $chroot_dir/home
     generate_vars
 }
 generate_vars(){
@@ -52,8 +55,8 @@ printf "                exportando variáveis de usuário...       \n"
         while read -r env_list; do
             sudo printf "export \"${env_list}\"\n" >> $chroot_dir/tmp/entrypoint
         done < <(printenv)
-         sudo printf 'cd $PWD' >> $chroot_dir/tmp/entrypoint
-         sudo printf "\nexec $user_shell%s\n" >> $chroot_dir/tmp/entrypoint
+        sudo printf 'cd $PWD' >> $chroot_dir/tmp/entrypoint
+        sudo printf "\nexec $user_shell%s\n" >> $chroot_dir/tmp/entrypoint
         chroot_switch
     else
         chroot_switch
@@ -61,28 +64,56 @@ printf "                exportando variáveis de usuário...       \n"
 }
 chroot_switch(){
     if [ $systemd == "0" ] ; then
-    chroot_setup
-       else
-    systemd_setup
+        chroot_setup
+    else
+        systemd_setup
     fi
 }
 chroot_setup(){
-printf "        chroot em $chroot_dir                 \n"
-printf "###########################################################\n"
-printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
-printf "###########################################################\n"
-    sudo chroot $chroot_dir su -c "printf "%s:" "user" | sudo chpasswd -e ; printf "%s:" "root" | sudo chpasswd -e; $user_shell /tmp/entrypoint" $user_chroot ##### zero password to root and user; thanks 89luca89
+    printf "        chroot em $chroot_dir                 \n"
     printf "###########################################################\n"
-printf "        desmontando chroot              \n"
-printf "###########################################################\n"
-    sudo umount -R $chroot_dir/* 2> /dev/null
+    printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
+    printf "###########################################################\n"
+    sudo chroot $chroot_dir su -c "printf "%s:" "user" | sudo chpasswd -e ; printf "%s:" "root" | sudo chpasswd -e; $user_shell /tmp/entrypoint'" $user_chroot ##### zero password to root and user; thanks 89luca89
+    exiting_ask
 }
 systemd_setup(){
-    sudo mkdir -p $chroot_dir/etc/systemd/system/console-getty.service.d/
-    sudo printf "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 \$TERM\n" $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf
+    if [ $pre_provisioning != "1" ] ; then
+        echo -e "#!/usr/bin/bash" >> /tmp/instant-root-reset-password
+        echo -e "printf "%s:" "$user_chroot" | chpasswd -e" >> /tmp/instant-root-reset-password
+        echo -e "printf "%s:" "root" | chpasswd -e" >> /tmp/instant-root-reset-password
+        sudo mv /tmp/instant-root-reset-password $chroot_dir/usr/bin/reset-password
+        sudo chmod 755 $chroot_dir/usr/bin/reset-password
+        printf "[Install]\nWantedBy=multi-user.target\n[Service]\nExecStart=/usr/bin/reset-password" >>  /tmp/reset-password.service-$moment
+        sudo mv /tmp/reset-password.service-$moment $chroot_dir/etc/systemd/system/reset-password.service
+        sudo ln -s $chroot_dir/etc/systemd/system/reset-password.service $chroot_dir/etc/systemd/system/multi-user.target.wants/reset-password.service
+        sudo mkdir -p $chroot_dir/etc/systemd/system/console-getty.service.d/
+    printf "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 '$TERM'" >>  /tmp/autologin.conf-$moment
+        sudo mv /tmp/autologin.conf-$moment $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf
+    fi
     sudo systemd-nspawn -D $chroot_dir -b
-    sudo umount -R $chroot_dir/* 2> /dev/null
+    exiting_ask
 }
+exiting_ask(){
+exiting="Y"
+    printf "###########################################################\n"
+    printf "        desmontar chroot? Y/n              \n"
+    printf "###########################################################\n"
+    while read -r exiting ; do
+        case $exiting in
+            y|Y)
+            sudo umount -R $chroot_dir/* 2> /dev/null
+            exit
+            ;;
+            *)
+            printf "mantendo choot montado, para usa-lo novamente use\n%s"
+            printf "    instant-root -d $operation_dir                  \n%s"
+            exit
+            ;;
+        esac
+    done < /dev/tty
+}
+
 #######################################################################################
 #
 #
@@ -111,6 +142,7 @@ fi
 if [ -z $1 ] ; then support_dir ; fi
 ###########################################################
 if [ "$1" == '-d' ] ; then
+pre_provisioning="1"
 
     if [  -z $2 ] ; then
         directory=$(pwd)
