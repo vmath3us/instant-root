@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 list_dir=("bin" "boot" "etc" "lib" "lib64" "opt" "root" "sbin" "srv" "usr" "var" "mnt")
 chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
@@ -6,6 +6,7 @@ pre_provisioning="0"
 user_shell=$SHELL
 user_chroot=$(whoami)
 mode="simple" ################################## suported simple, systemd (using nspawn), and podman (rootless)
+moment=$(date +%Y-%m-%d--%H-%M-%S)
 select_mode(){
     if [ $mode == "simple" ] || [ $mode == "systemd" ] ; then
         if [ $mode == "systemd" ] ; then printf "           pressione Ctrl ]]] para sair%s\n" ; fi
@@ -36,7 +37,6 @@ podman_generate_command(){
     podman_command="${podman_commmand} --volume $HOME:$HOME:rslave"
 }
 support_dir(){
-    moment=$(date +%Y-%m-%d--%H-%M-%S)
     operation_dir="$instant_root_dir/$moment"
     chroot_dir="$operation_dir/chroot"
     sudo mkdir -p $chroot_dir
@@ -49,7 +49,7 @@ printf "                verificando overlays...                               \n
          sudo mkdir -p $operation_dir/overlay/work-$i
          sudo mkdir -p $operation_dir/overlay/upper-$i
          sudo mkdir -p $chroot_dir/$i
-            sudo mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
+         sudo mount  -t overlay overlay -o lowerdir=/$i,upperdir=$operation_dir/overlay/upper-$i,workdir=$operation_dir/overlay/work-$i $chroot_dir/$i
          fi
         done
 chroot_mounts
@@ -88,7 +88,7 @@ generate_vars(){
     printf "                exportando variáveis de usuário...       \n"
         while read -r env_list; do
             printf "export \"${env_list}\"\n" >> /tmp/entrypoint-instant-root-$moment
-        done < <(printenv)
+        done < <(printenv | grep -Ev "!")
         printf "cd $PWD" >> /tmp/entrypoint-instant-root-$moment
         printf "\nexec $user_shell%s\n" >> /tmp/entrypoint-instant-root-$moment
         chroot_switch
