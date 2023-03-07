@@ -136,6 +136,42 @@ exiting="N"
             ;;
         esac
 }
+show_help(){
+    printf "\n
+    -m
+
+                escolha entre os modos
+                simple (chroot)
+                suporte a programas gráficos e som
+                mas não a serviços
+                este é o modo padrão
+                                
+
+                systemd
+                (usando systemd-nspawn)
+                suporte a serviços, mas não
+                a programas gráficos e som
+
+                em ambos os casos, a senha de root
+                e de $user_chroot serão zeradas
+
+#######################################################################################
+
+    -d 
+
+                escolha um diretório que já abriga um
+                instant-root para usar
+                o padrão é criar um novo em
+                $instant_root_dir
+
+#######################################################################################
+            um instant-root é intercambiável, pode-se usar o mesmo
+            nos modos simple e systemd, mas NÃO ao mesmo tempo
+            trocar entre os modos não exige desmontagem complementa,
+            somente de dev proc sys run e tmp,
+            que Instant Root já fará por padrão para garantir a
+            interoperabilidade entre os modos%s\n"
+}
 
 #######################################################################################
 #
@@ -180,8 +216,8 @@ while :; do
             shift
             fi
             ;;
-        *)
-            break
+        *) show_help
+            exit
             ;;
     esac
 done
