@@ -45,13 +45,8 @@ printf "                verificando pastas de processos...       \n"
         for i in ${chroot_system_dirs[@]} ; do
             if ! mountpoint -q $chroot_dir/$i > /dev/null; then
                 sudo mkdir  -p $chroot_dir/$i
-                if [ $i != "tmp" ] ;then
-                    sudo mount --rbind /$i $chroot_dir/$i
-                   sudo mount --make-rslave $chroot_dir/$i
-                else
-                    sudo mount --types "$i"fs /$i $chroot_dir/$i
-                   sudo mount --make-rslave $chroot_dir/$i
-                fi
+                sudo mount --rbind /$i $chroot_dir/$i
+                sudo mount --make-rslave $chroot_dir/$i
             fi
         done
         home_setup
