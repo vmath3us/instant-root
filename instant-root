@@ -211,8 +211,12 @@ while :; do
             shift
             fi
             ;;
-        *) show_help
+        -h |--help | -H)
+            show_help
             exit
+            ;;
+        *)
+            break
             ;;
     esac
 done
