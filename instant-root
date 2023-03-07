@@ -2,11 +2,11 @@
 list_dir=("bin" "boot" "etc" "lib" "lib64" "opt" "root" "sbin" "srv" "usr" "var" "mnt")
 chroot_system_dirs=("proc" "sys" "dev" "run" "tmp")
 instant_root_dir="/var/cache/instant-root"  #### need real file system, not overlayfs
-pre_provisioning="0"
 user_shell=$SHELL
 user_chroot=$(whoami)
 moment=$(date +%Y-%m-%d--%H-%M-%S)
-
+mode="chroot"
+storage="new_provisioning"
 validate_dir(){
     if [ $storage == "provisioned" ] ; then
         if [ -d $directory/overlay ] && [ -d $directory/chroot ] ; then
@@ -127,7 +127,9 @@ exiting="N"
             sudo umount -R $chroot_dir/* 2> /dev/null
             exit
             ;;
-            *)
+            *)  for i in ${chroot_system_dirs[@]} ; do
+                    sudo umount -R $chroot_dir/$i 2> /dev/null
+                done
             printf "    mantendo choot montado, para usa-lo novamente execute\n%s"
             printf "    instant-root -d $operation_dir                  \n%s"
             exit
@@ -147,7 +149,6 @@ if [ $user_chroot == "root" ] ; then
     printf "execute com seu usuário%s\n"
     exit 1
 fi
-mode="chroot"
 while :; do
     case $1 in
         -d)
@@ -185,6 +186,3 @@ while :; do
     esac
 done
 validate_dir
-
-
-
