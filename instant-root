@@ -5,36 +5,21 @@ instant_root_dir="/var/cache/instant-root"  #### need real file system, not over
 pre_provisioning="0"
 user_shell=$SHELL
 user_chroot=$(whoami)
-mode="simple" ################################## suported simple, systemd (using nspawn), and podman (rootless)
 moment=$(date +%Y-%m-%d--%H-%M-%S)
-select_mode(){
-    if [ $mode == "simple" ] || [ $mode == "systemd" ] ; then
-        if [ $mode == "systemd" ] ; then printf "           pressione Ctrl ]]] para sair%s\n" ; fi
-        support_dir
-    elif [ $mode == "podman" ] ; then
-        podman container exists instant-root
-            if [ $? -ne 0 ] ; then
-                 podman_generate_command
-            else
-                generate_vars
-            fi
 
-    else
-        printf "not defined mode, exiting"
-        exit 1
-    fi
-}
-podman_generate_command(){
-    podman_command="podman create --hostname instant-root-$HOST --ipc host --name instant-root --network host --privileged --security-opt label=disable --user root:root --pid host --label 'manager=instant-root' --volume /run/user/$(id -u):/run/user/$(id -u):rslave --entrypoint 'su -c $user_shell $HOME/.podman-entrypoint-instant-root $user_chroot'"
-    for i in ${list_dirs[@]} ; do
-        podman_command="${podman_command} --volume ${i}:${i}:ro"
-    done
-    for i in ${chroot_system_dirs[@]} ; do
-        if [ $i != "proc" ] || [ $i != "run" ] ; then
-        podman_command="${podman_command} --volume ${i}:${i}:rslave"
+validate_dir(){
+    if [ $storage == "provisioned" ] ; then
+        if [ -d $directory/overlay ] && [ -d $directory/chroot ] ; then
+            operation_dir=$directory
+            chroot_dir="$directory/chroot"
+            overlay_create_and_mount
+        else
+            printf "$directory nunca usado antes, saindo%s\n"
+            exit 1
         fi
-    done
-    podman_command="${podman_commmand} --volume $HOME:$HOME:rslave"
+    elif [ $storage == "new_provisioning" ] ; then
+        support_dir
+    fi
 }
 support_dir(){
     operation_dir="$instant_root_dir/$moment"
@@ -56,7 +41,7 @@ chroot_mounts
 }
 chroot_mounts(){
 printf "                verificando pastas de processos...       \n"
-    if [ $mode == "simple" ]; then
+    if [ $mode == "chroot" ]; then
         for i in ${chroot_system_dirs[@]} ; do
             if ! mountpoint -q $chroot_dir/$i > /dev/null; then
                 sudo mkdir  -p $chroot_dir/$i
@@ -70,7 +55,7 @@ printf "                verificando pastas de processos...       \n"
             fi
         done
         home_setup
-    else
+    elif [ $mode == "systemd" ] ; then
         home_setup
     fi
 }
@@ -84,56 +69,55 @@ home_setup(){
     generate_vars
 }
 generate_vars(){
-    if [ $mode == "simple" ] || [ $mode == "podman" ]; then
+    if [ $mode == "chroot" ] ; then
     printf "                exportando variáveis de usuário...       \n"
         while read -r env_list; do
             printf "export \"${env_list}\"\n" >> /tmp/entrypoint-instant-root-$moment
         done < <(printenv | grep -Ev "!")
-        printf "cd $PWD" >> /tmp/entrypoint-instant-root-$moment
-        printf "\nexec $user_shell%s\n" >> /tmp/entrypoint-instant-root-$moment
+        printf "cd $PWD\n" >> /tmp/entrypoint-instant-root-$moment
+        printf "$user_shell -l" >> /tmp/entrypoint-instant-root-$moment
+        sudo mv /tmp/entrypoint-instant-root-$moment $chroot_dir/tmp/entrypoint
         chroot_switch
     elif [ $mode == "systemd" ] ; then
         chroot_switch
     fi
 }
 chroot_switch(){
-    if [ $mode == "simple" ] ; then
+    if [ $mode == "chroot" ] ; then
         chroot_setup
     elif [ $mode == "systemd" ] ; then
         systemd_setup
-    elif [ $mode == "podman" ] ; then
-        podman_setup
     fi
 }
 chroot_setup(){
-    sudo mv /tmp/entrypoint-instant-root-$moment $chroot_dir/tmp/entrypoint
     printf "        chroot em $chroot_dir                 \n"
+    printf "        Ctrl-d  para sair               \n"
     printf "###########################################################\n"
     printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
     printf "###########################################################\n"
     sudo chroot $chroot_dir su -c "printf "%s:" "$user_chroot" | chpasswd -e ; printf "%s:" "root" | chpasswd -e" ##### zero password to root and user; thanks 89luca89
     sudo chroot $chroot_dir su -c "$user_shell /tmp/entrypoint" $user_chroot
+#sudo chroot $chroot_dir su -c "$user_shell -l ; cd $current_dir " $user_chroot
     exiting_ask
 }
 systemd_setup(){
-    if [ $pre_provisioning != "1" ] ; then
         sudo mkdir -p $chroot_dir/etc/systemd/system/console-getty.service.d/
         printf  "[Service]\nExecStart=\nExecStart=-/sbin/agetty -o '-p -f -- \\\\\\\\u' --noclear --keep-baud --autologin $user_chroot - 115200,38400,9600 \$TERM\n" | sudo tee $chroot_dir/etc/systemd/system/console-getty.service.d/autologin.conf > /dev/null
         printf "#!/usr/bin/bash\nprintf \"%%s:\" \"$user_chroot\" | chpasswd -e\nprintf \"%%s:\" \"root\" | chpasswd -e" | sudo tee $chroot_dir/usr/bin/reset-password > /dev/null
         sudo chmod 755 $chroot_dir/usr/bin/reset-password
         printf "[Install]\nWantedBy=multi-user.target\n[Service]\nExecStart=/usr/bin/reset-password" | sudo tee $chroot_dir/etc/systemd/system/reset-password.service > /dev/null
-        sudo ln -s $chroot_dir/etc/systemd/system/reset-password.service $chroot_dir/etc/systemd/system/multi-user.target.wants/reset-password.service
-    fi
-    sudo systemd-nspawn -qbD $chroot_dir
+        sudo ln -sf $chroot_dir/etc/systemd/system/reset-password.service $chroot_dir/etc/systemd/system/multi-user.target.wants/reset-password.service
+        printf "###########################################################\n"
+        printf "    Atenção: $user_chroot e root não possuem senha aqui    \n"
+        printf "###########################################################\n"
+        sleep 1
+        sudo systemd-nspawn -qbD $chroot_dir
     exiting_ask
 }
-podman_setup(){
-    mv /tmp/entrypoint-instant-root-$moment $HOME/.podman-entrypoint-instant-root
-}
 exiting_ask(){
-exiting="Y"
+exiting="N"
     printf "###########################################################\n"
-    printf "        desmontar chroot? Y/n              \n"
+    printf "        desmontar chroot? y/N              \n"
     printf "###########################################################\n"
     read -r exiting < /dev/tty 
         case $exiting in
@@ -155,41 +139,52 @@ exiting="Y"
 #
 #
 #######################################################################################
-validate_dir(){
-    if [ -d $directory/overlay ] && [ -d $directory/chroot ] ; then
-        operation_dir=$directory
-        chroot_dir="$directory/chroot"
-        overlay_create_and_mount
-    else
-        printf "$directory nunca usado antes, saindo%s\n"
-        exit 1
-    fi
-}
+
 printf "###########################################################\n"
 printf "                Instant Root                               \n"
 printf "###########################################################\n"
-
-
-
 if [ $user_chroot == "root" ] ; then
     printf "execute com seu usuário%s\n"
     exit 1
 fi
-###########################################################
-if [ -z $1 ] ; then support_dir ; fi
-###########################################################
-if [ "$1" == '-d' ] ; then
-pre_provisioning="1"
+mode="chroot"
+while :; do
+    case $1 in
+        -d)
+            if [  -z $2 ] ; then
+                storage="new_provisioning"
+            shift
+            shift
+            elif [ $2 == "." ] ; then
+                storage="provisioned"
+                directory=$(pwd)
+            shift
+            shift
+            else
+                directory="$(readlink -f $2)"
+                storage="provisioned"
+            shift
+            shift
+            fi
+            ;;
+        -m)
+            if [ -z $2 ] || [ $2 == "chroot" ] ; then
+            mode="chroot"
+            shift
+            shift
+            elif [ $2 == "systemd" ] ; then
+            mode="$2"
+            printf "           pressione Ctrl ]]] para sair%s\n"
+            shift
+            shift
+            fi
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+validate_dir
 
-    if [  -z $2 ] ; then
-        directory=$(pwd)
-        validate_dir
-    else
-        directory=$2
-        validate_dir
-    fi
 
-elif [ "$1" == '.' ] ; then
-    directory=$(pwd)
-    validate_dir
-fi
+
